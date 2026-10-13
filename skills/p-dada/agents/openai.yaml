@@ -1,0 +1,4 @@
+interface:
+  display_name: "P-DADA"
+  short_description: "Planning agent: strategy, build plans, risks"
+  default_prompt: "Use $p-dada to turn this idea into a reviewable plan with decisions, risks and acceptance tests."

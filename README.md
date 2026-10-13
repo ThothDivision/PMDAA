@@ -1,34 +1,26 @@
-# DADA — Directed Ambition Design Agent
+# P-DADA — Planning DADA
 
-An agent skill for ambitious graphic design, packaged from the Graphic Design Agentic Workflow (gdaw). It supports identity, posters, books, editorial design, motion, typography, imagery, data graphics, and interfaces.
-
-The original anchor catalog and graph structure live in a linked reference. DADA traverses that graph non-linearly through a living Frontier, with no move quota, until the critics converge and the stop conditions hold.
+An agent skill for plans: strategy, product vision, architecture and build plans, roadmaps, business models and public planning
+sites. Fork of [DADA](https://github.com/AnEntrypoint/dada): same non-linear traversal (living Frontier, branches, reopening,
+WHOLE rounds, five stop conditions, one subagent per literary reference), with a planning anchor graph and planning critics.
 
 ## Install
 
-Install with the skills CLI from any project folder:
-
 ```sh
-npx skills add AnEntrypoint/dada -s dada
+npx skills add PrometheusIntelligence/p-dada -s p-dada
 ```
-
-The CLI detects your agent, copies the `dada` skill into its skills folder, and records it in `skills-lock.json`. Use `npx skills list` to confirm the install.
-
-This repository also includes `.agents/skills/dada`, a relative link to `skills/dada`, for workspace discovery. After opening this project, the skill is available on the next turn.
-
-To copy the skill by hand instead, copy `skills/dada` into your agent’s skills directory, for example `~/.agents/skills/dada`, or `~/.codex/skills/dada` for Codex. Preserve any existing installation before replacing it.
 
 ## Use
 
-Invoke `$dada` with a design brief. DADA always pursues maximum artistic ambition and runs in one of two modes, chosen once and stated in the Traversal Plan:
+Invoke `$p-dada` with the plan or idea. Two modes:
+- **Vision** — public-facing plan; criterion: Rumelt's kernel (diagnosis, guiding policy, coherent action) and every checkable claim true or labelled.
+- **Execution** — build plan; criterion: every milestone has an exit test, every decision has options, a recommendation, an owner and a decide-by.
 
-- **Autonomous** judges the work on its own terms (inner necessity and significant form), with no ideology, cause or market as a veto. It is the default unless the brief names a client, audience or public constraint.
-- **Adaptive** adds approachability: MAYA, Most Advanced Yet Acceptable, requires both the advanced and the acceptable pole to hold.
-
-The traversal is non-linear: each pass spends one candidate from the Frontier (outgoing, incoming and dotted edges from visited anchors), branches between rival Breakers, and reopens earlier moves when a dependency changes. A move count is never a stopping rule. The run closes only when the five stop conditions hold: no open Frontier items, a WHOLE panel round with every required critic passing, saturation across two consecutive WHOLE rounds, a logged ambition push, and every dotted edge applied or declined. A Lite run (one move, one panel round) happens only on explicit request, and an interrupted run records its Open frontier and resume point in `DESIGN-LOG.md`.
-
-The workflow records a Traversal Plan with its Frontier, Decision Records, Panel Reports, an Anchor Ledger, and a Compliance Check in `DESIGN-LOG.md`. Read `skills/dada/SKILL.md` for the full contract and `skills/dada/references/anchor-graph.md` for the graph. The verdict on every node of that graph from the most recent traversal is in `skills/dada/references/traversal-ledger.md`.
+Each run writes `PLANNING-LOG.md` beside the plan: Traversal Plan with Frontier, Decision Records, Panel Reports, Anchor Ledger
+and Compliance Check, plus printed claim / decision / exit-test audits. Read `skills/p-dada/SKILL.md` for the contract and
+`skills/p-dada/references/planning-graph.md` for the graph.
 
 ## Validation
+`python3 scripts/validate_skills.py` (PyYAML). CI runs the same check.
 
-Run `python3 scripts/validate_skills.py` with PyYAML installed. GitHub Actions runs the same metadata, reference, and discovery-link validation for pushes and pull requests.
+Credit: DADA by AnEntrypoint · P-DADA fork by PrometheusIntelligence · Pimp My Skill · SolutionsAsService
