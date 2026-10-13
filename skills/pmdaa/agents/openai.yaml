@@ -1,0 +1,4 @@
+interface:
+  display_name: "PMDAA"
+  short_description: "Plan projects and keep a portfolio on track"
+  default_prompt: "Use $pmdaa to resume my portfolio: live-check every project, flag stale status and pick the next action."

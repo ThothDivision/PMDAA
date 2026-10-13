@@ -1,0 +1,57 @@
+# Ledger format
+
+One YAML file per portfolio, `PORTFOLIO.yaml`. `scripts/portfolio.py check` enforces the rules marked **(checked)**.
+
+```yaml
+portfolio: autheo                  # (checked) name
+north_star: "One sentence: the outcome all projects serve"   # (checked) OKR objective / north star
+wip_limit: 3                       # (checked) max projects in state 'doing'; over the limit is a warning
+public: false                      # true = public-safe ledger; same as --public
+updated: 2026-10-13
+projects:
+  - id: dex                        # (checked) unique; used by depends_on
+    name: Autheo DEX
+    repo: owner/name               # optional; enables refresh
+    local: /path/to/clone          # optional; for git status
+    visibility: public             # (checked) public | private; must match GitHub after refresh
+    one_line: "Short status a stranger may read"
+    north_star: "What this project is for"
+    state: doing                   # (checked) backlog | doing | blocked | done  (kanban column)
+    rag: amber                     # (checked) green | amber | red
+    rag_evidence: "The CI run, exit-test result or link that justifies the colour"   # (checked) non-empty
+    milestone:
+      id: M0
+      name: Walking skeleton
+      exit_test: "A test a stranger could run, with a threshold"   # (checked) non-empty
+      decide_by: 2026-11-01        # optional
+    evidence:                      # what the last session verified (claimed)
+      head: eecb377                # STALE CLAIM if live.head has moved past it
+      ci: success
+      links: [https://example.org/run/1]
+    live: {}                       # written by refresh: visibility, head, head_date, head_subject, ci, ci_url, checked
+    blockers: []                   # (checked) required when state is blocked
+    next_actions:                  # (checked) 1..3 when open
+      - {action: "The concrete next thing", owner: agent, status: todo}   # status: todo | doing | done
+    owner: SolutionsAsService      # single-threaded owner
+    last_verified: 2026-10-13      # (checked) STALE after --stale-days
+    depends_on: [other-id]         # (checked) ids exist, no cycles; drives the critical path
+    raid:                          # risks, assumptions, issues, dependencies
+      - {type: R, text: "...", owner: someone, trigger: "..."}
+    decisions: ["ADR link, or a one-line decision with its date"]
+```
+
+## Rules
+
+- **Claimed vs. live.** `evidence` is what the last session verified; `live` is what GitHub says now. They are never merged
+  automatically: an agent looks at what changed and decides.
+- **CI on HEAD** = the runs for the HEAD commit: all success = `success`, any still running = `pending`, any other conclusion =
+  `failure`, no runs = `none` (a repo with no CI cannot be green on CI alone; cite another check).
+- **Critical path** = the longest `depends_on` chain of open projects (one unit per project; no durations are claimed).
+- **Public-safe.** In a public ledger (`public: true` or `--public`) a private project may carry only `id`, `name`,
+  `visibility`, `one_line`, `rag`, `state` and `depends_on`. Keep the full ledger private and derive the public one from it.
+- **Comments.** `refresh` rewrites the file, which drops YAML comments; keep notes in fields.
+
+## Board
+
+`portfolio.py board PORTFOLIO.yaml [--out DIR]` writes `BOARD.md`, `board.html` (static, no scripts) and `status/<id>.md` per
+project, with the checker's flags at the bottom of the board.

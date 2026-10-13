@@ -35,3 +35,7 @@ for skill in skills:
     if not discovery.is_symlink() or discovery.resolve() != skill.resolve():
         raise SystemExit(f"{skill}: workspace discovery link is invalid")
     print(f"Valid skill: {skill.name}")
+# pmdaa ships P-DADA's graphs so it installs standalone; they must not drift from upstream p-dada.
+for name in ("planning-graph.md", "design-graph.md"):
+    if (root / "skills/pmdaa/references" / name).read_bytes() != (root / "skills/p-dada/references" / name).read_bytes():
+        raise SystemExit(f"skills/pmdaa/references/{name} differs from skills/p-dada/references/{name}; copy it again")
