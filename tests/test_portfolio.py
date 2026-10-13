@@ -52,6 +52,49 @@ class Check(unittest.TestCase):
         safe = {"id": "x", "name": "X", "visibility": "private", "one_line": "building", "rag": "green", "state": "doing"}
         self.assertEqual(self.errs(ledger(safe), public=True), ([], []))
 
+    def test_pair(self):
+        pair = {"public": "o/plan", "private": "o/build"}
+        ok = project("p", repos=pair, evidence={"public": {"head": "abc1234"}},
+                     live={"public": {"visibility": "public", "head": "abc1234ff"},
+                           "private": {"visibility": "private", "head": "0000000", "ci": "failure"}})
+        self.assertEqual(self.errs(ledger(ok))[0], [])
+        self.assertTrue(any("p [private]: UNVERIFIED" in w for w in self.errs(ledger(ok))[1]))
+        swapped = project("p", repos=pair, live={"public": {"visibility": "private"}})
+        self.assertTrue(any("p [public]: ledger says public but GitHub says private" in e for e in self.errs(ledger(swapped))[0]))
+        for bad in (project("p", repos={"secret": "o/x"}), project("p", repos=pair, repo="o/plan"),
+                    project("p", repos={"private": "o/build"})):  # private-only pair must be a private project
+            self.assertTrue(self.errs(ledger(bad))[0], bad)
+
+    def test_pair_public_ledger_names_private_repo_only(self):
+        named = project("p", repos={"public": "o/plan", "private": "o/build"}, live={"public": {"visibility": "public"}})
+        self.assertEqual(self.errs(ledger(named), public=True), ([], []))
+        leaky = project("p", repos={"public": "o/plan", "private": "o/build"}, live={"private": {"head": "abc", "ci": "failure"}})
+        errors, warnings = self.errs(ledger(leaky), public=True)
+        self.assertTrue(any("name the private repo only" in e for e in errors))
+        self.assertFalse(any("[private]" in w for w in warnings))
+
+    def test_refresh_pair_and_single(self):
+        seen = []
+        def fake(*args):
+            seen.append(args[2] if args[0] == "repo" else None)
+            if args[0] == "repo":
+                return {"visibility": "PRIVATE" if "build" in args[2] else "PUBLIC", "defaultBranchRef": {"name": "main"}}
+            if args[0] == "api":
+                return {"sha": "f" * 40, "commit": {"committer": {"date": "d"}, "message": "m"}}
+            return []
+        real, pf.gh = pf.gh, fake
+        try:
+            lg = ledger(project("p", repos={"public": "o/plan", "private": "o/build"}), project("s", repo="o/single"))
+            pf.refresh(lg)
+            self.assertEqual({k: v["visibility"] for k, v in lg["projects"][0]["live"].items()}, {"public": "public", "private": "private"})
+            self.assertEqual(lg["projects"][1]["live"]["visibility"], "public")
+            pub = ledger(project("p", repos={"public": "o/plan", "private": "o/build"}), public=True)
+            seen.clear(); pf.refresh(pub)
+            self.assertEqual(list(pub["projects"][0]["live"]), ["public"])
+            self.assertNotIn("o/build", seen)
+        finally:
+            pf.gh = real
+
     def test_critical_path_skips_done(self):
         ps = [project("a", state="done"), project("b", depends_on=["a"]), project("c", depends_on=["b"]), project("d")]
         self.assertEqual(pf.critical_path(ps), ["b", "c"])

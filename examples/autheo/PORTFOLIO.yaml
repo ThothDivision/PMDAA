@@ -2,47 +2,94 @@ portfolio: autheo
 north_star: 'Pick an asset and a chain, and Autheo handles the rest: real-world assets issued, traded and settled non-custodially,
   with agents that can act only inside signed mandates and leave verifiable receipts.'
 wip_limit: 4
-updated: 2026-10-13
+updated: '2026-10-13'
 public: true
 note: 'Public-safe example derived from a private ledger: private projects carry name + one line only; local paths removed.'
 projects:
-- id: real-dex
-  name: Autheo RWA stack build (real-dex)
-  visibility: private
-  one_line: Non-custodial RWA stack build (tokenization + DEX + interop); M0 walking skeleton in progress.
+- id: rwa
+  name: Autheo RWA stack (TaaS + DEX)
+  repos:
+    public: ThothDivision/autheo-taas-plan
+    private: ThothDivision/autheo-real-dex
+  visibility: public
+  one_line: Tokenization + DEX + interop for real-world assets. Public plan of record (TaaS plan, DEX plan under dex/) and
+    a private build repo.
+  north_star: 'Pick an asset and a chain, Autheo handles the rest: issuance rules, compliance, DvP settlement and routing,
+    non-custodial; every step an MCP tool.'
   state: doing
   rag: green
-  depends_on:
-  - taas-plan
-  - dex-plan
+  rag_evidence: Plan site rebuilt and deployed (taas-plan, DEX plan merged into dex/); build progress tracked privately.
+  milestone:
+    id: M0-V
+    name: Discovery (business, beside M0)
+    exit_test: Signed LOIs from one cash-leg bank, one issuer and one market maker/buy-side (R-01, R-05); 5-person console
+      usability test logged; D-02, D-03, D-09 decided.
+  evidence:
+    public:
+      head: 7503f6b
+      links:
+      - https://thothdivision.github.io/autheo-taas-plan/
+      - https://thothdivision.github.io/autheo-taas-plan/dex/
+      ci: success
+  blockers: []
+  next_actions:
+  - action: Record agent trading under mandates (DEX phase 3) as an explicit dependency on agent-env Phase C in DEX-INTEGRATION.md
+    owner: SolutionsAsService
+    status: todo
+  - action: Turn phase gates into exit tests (threshold + who runs it)
+    owner: SolutionsAsService
+    status: todo
+  owner: SolutionsAsService
+  last_verified: '2026-10-13'
+  depends_on: []
+  raid:
+  - type: R
+    text: M0-V discovery (LOIs, usability) is business work with no owner date; M1 is gated on it.
+    owner: Head of BD
+    trigger: M0 exit without M0-V
+  decisions:
+  - D-04 licensing map (proposed)
+  - D-11 freeze override and appeal authority (proposed)
+  - '2026-10-13 one project, one repo pair: autheo-dex-plan merged into autheo-taas-plan/dex (archived); TAAS-DEX merged into
+    the private build repo (archived)'
+  live:
+    public:
+      visibility: public
+      head: 7503f6bb2fce
+      head_date: '2026-10-13T22:43:34Z'
+      head_subject: DEX plan now lives in dex/; private dev repo referenced by a one-liner only
+      ci: success
+      ci_url: https://github.com/ThothDivision/autheo-taas-plan/actions/runs/38479721308
+      checked: '2026-10-13T22:55:23+00:00'
 - id: agent-env
   name: Autheo Agent Environment
   repo: SolutionsAsService/autheo-agent-environment
   visibility: public
   one_line: 'Reference trust layer for agents: did:key identities, attenuated delegation chains (mandates), policy decisions,
-    signed receipts; v0.6.0 adds dex.* scopes. Local simulation.'
+    signed receipts; v0.7.0: dex.* scopes, dex.order.sign renamed dex.order.request_signature (old name a deprecated alias).
+    Local simulation.'
   north_star: Anyone can give an agent bounded authority and anyone can verify what it did, offline, without a registry.
   state: doing
   rag: green
-  rag_evidence: '''Reference environment checks'' success on 2adb938 (0.6.0: dex.* scopes, budget assets, venue decision vectors,
-    @autheo/did JS package).'
+  rag_evidence: '''Reference environment checks'' success on 7f3d981 (0.7.0: dex.order.request_signature, dex.order.sign a
+    deprecated alias; 265 pytest + JS vector checks).'
   milestone:
     id: Phase A
     name: Contracts and product decisions (docs/ROADMAP.md)
     exit_test: Responsible platform owners approve versioned contracts (identity/credential, Dev Portal, Marketplace, L1);
       unknowns explicit, no guessed endpoints or DID semantics.
   evidence:
-    head: 2adb938
+    head: 7f3d981
     ci: success
     links:
-    - https://github.com/SolutionsAsService/autheo-agent-environment/actions/runs/38476638470
+    - https://github.com/SolutionsAsService/autheo-agent-environment/actions/runs/38480499870
     - https://solutionsasservice.github.io/autheo-agent-environment-site/
   blockers: []
   next_actions:
-  - action: 'DEX interop: agent-env side landed in 0.6.0 (dex.* scopes); DEX side in progress (sibling subagent). Verify end
-      to end: mandate -> unsigned order -> human signature -> receipt hash in audit chain'
-    owner: sibling subagent (2026-10-13)
-    status: doing
+  - action: 'DEX interop end to end: mandate -> unsigned order -> human signature -> receipt hash in audit chain (DEX side
+      landed in the private build at 53caf04; pin 0.7.0 at 27c34c9)'
+    owner: SolutionsAsService
+    status: todo
   - action: Approval object bound to one request digest so 'escalate' resolves to a human signature (Phase 0.2 next increment,
       Phase C prerequisite)
     owner: SolutionsAsService
@@ -62,22 +109,19 @@ projects:
     text: Autheo identity will accept did:key / VC 2.0 chains; not confirmed by platform owners (Phase A).
     owner: SolutionsAsService
     trigger: Phase A review
-  - type: R
-    text: 0.6.0 defines a dex.order.sign scope; the public plan says the agent never signs. Confirm the scope cannot let an
-      agent key sign an order (or rename it).
-    owner: SolutionsAsService
-    trigger: before Stage 2 exit
   decisions:
   - 'docs/EXISTING-SOLUTIONS.md: W3C VC 2.0 + Data Integrity eddsa-jcs-2022, did:key'
   - Agents never hold signing authority over funds (environment simulates; nothing executes)
+  - '2026-10-13 0.7.0: dex.order.sign -> dex.order.request_signature (alias accepted in 0.7, removed in 0.8); the agent never
+    signs'
   live:
     visibility: public
-    head: 2adb938ba310
-    head_date: '2026-10-13T22:16:15Z'
-    head_subject: 'feat(venue): 0.6.0 dex.* scopes, budget assets, venue decision vectors, @autheo/did JS package'
+    head: 7f3d981a6ae5
+    head_date: '2026-10-13T22:50:53Z'
+    head_subject: 'feat(venue): 0.7.0 rename dex.order.sign -> dex.order.request_signature'
     ci: success
-    ci_url: https://github.com/SolutionsAsService/autheo-agent-environment/actions/runs/38476638470
-    checked: '2026-10-13T22:26:39+00:00'
+    ci_url: https://github.com/SolutionsAsService/autheo-agent-environment/actions/runs/38480499870
+    checked: '2026-10-13T22:55:23+00:00'
 - id: stack
   name: Autheo Stack (ecosystem map and plan of record)
   repo: autheo-os/autheo-stack
@@ -115,8 +159,7 @@ projects:
   last_verified: 2026-10-13
   depends_on:
   - agent-env
-  - taas-plan
-  - dex-plan
+  - rwa
   raid:
   - type: R
     text: Hosting at autheo-stack.shadw.app is outside GitHub; a push may not redeploy. Verify the live page after each push.
@@ -133,108 +176,11 @@ projects:
     head_subject: 'Ecosystem plan: agents on the RWA stack (mandates, human signature, receipts), dependency map, stage'
     ci: none
     ci_url: null
-    checked: '2026-10-13T22:26:39+00:00'
-- id: taas-plan
-  name: Autheo TaaS plan
-  repo: ThothDivision/autheo-taas-plan
-  visibility: public
-  one_line: 'Plan of record for tokenization-as-a-service and the RWA build: north star, build plan M0-M6 with exit tests,
-    decisions and risks.'
-  north_star: A bank or issuer can tokenize, distribute and service a real-world asset on Autheo with regulated roles held
-    by licensed partners.
-  state: doing
-  rag: green
-  rag_evidence: pages-build-deployment success on c5e3a0b; BUILD-PLAN.md milestones each carry exit tests.
-  milestone:
-    id: M0-V
-    name: Discovery (business, beside M0)
-    exit_test: Signed LOIs from one cash-leg bank, one issuer and one market maker/buy-side (R-01, R-05); 5-person console
-      usability test logged; D-02, D-03, D-09 decided.
-  evidence:
-    head: c5e3a0b
-    ci: success
-    links:
-    - https://thothdivision.github.io/autheo-taas-plan/
-  blockers: []
-  next_actions:
-  - action: Commit or discard the uncommitted local index.html edit (3 lines) after checking who owns it
-    owner: SolutionsAsService
-    status: todo
-  - action: Record agent trading under mandates (DEX phase 3) as an explicit dependency on agent-env Phase C in DEX-INTEGRATION.md
-    owner: SolutionsAsService
-    status: todo
-  owner: SolutionsAsService
-  last_verified: 2026-10-13
-  depends_on: []
-  raid:
-  - type: R
-    text: M0-V discovery (LOIs, usability) is business work with no owner date; M1 is gated on it.
-    owner: Head of BD
-    trigger: M0 exit without M0-V
-  decisions:
-  - D-04 licensing map (proposed)
-  - D-11 freeze override and appeal authority (proposed)
-  live:
-    visibility: public
-    head: c5e3a0b5663d
-    head_date: '2026-10-13T21:30:21Z'
-    head_subject: 'Autheo DEX is one venue: router interoperates with external DEXs and aggregators'
-    ci: success
-    ci_url: https://github.com/ThothDivision/autheo-taas-plan/actions/runs/38471119897
-    checked: '2026-10-13T22:26:39+00:00'
-- id: dex-plan
-  name: Autheo DEX plan
-  repo: ThothDivision/autheo-dex-plan
-  visibility: public
-  one_line: 'DEX planning site: open + institutional tiers, DvP on Autheo L1, cross-chain via L0 Mesh, phases 0-5.'
-  north_star: A venue where eligibility is enforced on every fill and settlement is atomic on Autheo L1.
-  state: doing
-  rag: amber
-  rag_evidence: pages-build-deployment success on 1e0fffa, but the roadmap phases have gates, not stranger-runnable exit tests;
-    last commit 2026-10-12, before the 'DEX is one venue' change in taas-plan.
-  milestone:
-    id: Phase 0
-    name: Design
-    exit_test: Market-structure spec, policy-hook interface shared with TaaS, settlement contract design and intent format
-      reviewed with counsel and a venue partner (review notes linked).
-  evidence:
-    head: 1e0fffa
-    ci: success
-    links:
-    - https://thothdivision.github.io/autheo-dex-plan/
-  blockers: []
-  next_actions:
-  - action: 'Sync with taas-plan c5e3a0b: Autheo DEX is one venue; router interoperates with external DEXs and aggregators'
-    owner: SolutionsAsService
-    status: todo
-  - action: Turn phase gates into exit tests (threshold + who runs it)
-    owner: SolutionsAsService
-    status: todo
-  owner: SolutionsAsService
-  last_verified: 2026-10-13
-  depends_on:
-  - taas-plan
-  raid: []
-  decisions: []
-  live:
-    visibility: public
-    head: 1e0fffac32b9
-    head_date: '2026-10-13T04:12:50Z'
-    head_subject: 'Autheo DEX planning: architecture, market structure, TaaS integration, THEO, risk, roadmap; designed'
-    ci: success
-    ci_url: https://github.com/ThothDivision/autheo-dex-plan/actions/runs/38460251079
-    checked: '2026-10-13T22:26:39+00:00'
-- id: taas-dex
-  name: TAAS-DEX (dev repo placeholder)
-  visibility: private
-  one_line: README-only development repo; the build is happening in autheo-real-dex.
-  state: blocked
-  rag: amber
-  depends_on: []
+    checked: '2026-10-13T22:55:23+00:00'
 - id: asset-track
   name: Autheo AssetTrack (+ ATN-01 node)
   visibility: private
-  one_line: Custody-aware asset tracking concept (reefer pilot) with the ATN-01 v1.2 truck RF node concept CAD.
+  one_line: 'Custody-aware asset tracking (reefer pilot): concept, ATN-01 v1.2 truck RF node CAD and a custody web app.'
   state: doing
   rag: amber
   depends_on:

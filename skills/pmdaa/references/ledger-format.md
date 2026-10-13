@@ -11,7 +11,8 @@ updated: 2026-10-13
 projects:
   - id: dex                        # (checked) unique; used by depends_on
     name: Autheo DEX
-    repo: owner/name               # optional; enables refresh
+    repo: owner/name               # optional; enables refresh. Or a pair (not both):
+    # repos: {public: owner/plan, private: owner/build}   # (checked) see Pairs
     local: /path/to/clone          # optional; for git status
     visibility: public             # (checked) public | private; must match GitHub after refresh
     one_line: "Short status a stranger may read"
@@ -49,6 +50,11 @@ projects:
 - **Critical path** = the longest `depends_on` chain of open projects (one unit per project; no durations are claimed).
 - **Public-safe.** In a public ledger (`public: true` or `--public`) a private project may carry only `id`, `name`,
   `visibility`, `one_line`, `rag`, `state` and `depends_on`. Keep the full ledger private and derive the public one from it.
+- **Pairs.** A project has at most two repos: one public (docs, specs, public-safe code) and one private (internals):
+  `repos: {public: owner/name, private: owner/name}`. `refresh` checks both and writes `live: {public: {...}, private: {...}}`;
+  `evidence` is per side too (`evidence: {public: {head: ...}}`). Each side must match its GitHub visibility. The project is
+  `public` when it has a public repo. In a public ledger the private repo is a **name only**: `refresh` skips it, `check
+  --public` prints just its name, and `live.private` / `evidence.private` are errors. The old single `repo` keeps working.
 - **Comments.** `refresh` rewrites the file, which drops YAML comments; keep notes in fields.
 
 ## Board

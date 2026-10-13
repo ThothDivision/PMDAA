@@ -66,6 +66,7 @@ dotted counterpoints before forcing it into a milestone.
 - A status that was not live-checked this session is labelled with its last-verified date, never presented as current.
 - Green needs evidence; evidence older than HEAD is a stale claim, not evidence.
 - More than three next actions is a backlog, not a plan; move the rest to the milestone or the RAID log.
+- A project is at most a pair: one public repo and one private repo (`repos: {public, private}`); in a public file the private repo is a name only.
 - A private project in a public file gets its name and one line, nothing else (`check --public` enforces the fields; you check the words).
 - If the ledger was not updated at the end of the session, the session did not happen as far as the next one is concerned.
 

@@ -6,9 +6,9 @@
 - Milestone: S1 Ecosystem plan with agent/DEX integration, dependency map and staged roadmap
 - Exit test: Page renders at 390px and 1440px with no horizontal overflow; every roadmap stage has an exit test and a stop-if; PLANNING-LOG.md has the five P-DADA artifacts; no private-repo internals; all outbound links 200.
 - Evidence (claimed): {'head': '7cb7e63', 'ci': 'none', 'links': ['https://autheo-stack.shadw.app/', 'https://github.com/autheo-os/autheo-stack/blob/main/PLANNING-LOG.md']}
-- Live: {'visibility': 'public', 'head': '7cb7e63021f0', 'head_date': '2026-10-13T22:26:17Z', 'head_subject': 'Ecosystem plan: agents on the RWA stack (mandates, human signature, receipts), dependency map, stage', 'ci': 'none', 'ci_url': None, 'checked': '2026-10-13T22:26:39+00:00'}
+- Live: {'visibility': 'public', 'head': '7cb7e63021f0', 'head_date': '2026-10-13T22:26:17Z', 'head_subject': 'Ecosystem plan: agents on the RWA stack (mandates, human signature, receipts), dependency map, stage', 'ci': 'none', 'ci_url': None, 'checked': '2026-10-13T22:55:23+00:00'}
 - Owner: SolutionsAsService · last verified 2026-10-13
-- Depends on: agent-env, taas-plan, dex-plan
+- Depends on: agent-env, rwa
 
 ## Next actions
 1. Add a CI job: link check + HTML parse on push (so the page can go green on evidence) (todo)

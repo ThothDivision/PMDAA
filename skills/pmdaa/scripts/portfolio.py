@@ -2,7 +2,7 @@
 """PMDAA portfolio ledger: check, live-refresh (gh) and render a status board.
 
   python3 portfolio.py check   PORTFOLIO.yaml [--public] [--stale-days 7]
-  python3 portfolio.py refresh PORTFOLIO.yaml           # writes live: {visibility, head, ci, ...} per project via gh
+  python3 portfolio.py refresh PORTFOLIO.yaml           # writes live: {visibility, head, ci, ...} per project (per repo for pairs) via gh
   python3 portfolio.py board   PORTFOLIO.yaml [--out DIR] # BOARD.md, board.html, status/<id>.md
 
 Needs PyYAML. 'refresh' needs the GitHub CLI ('gh', or the path in $GH). Exit code 1 on ledger errors.
@@ -20,6 +20,19 @@ CHIP = {"green": "#1f7a45", "amber": "#9a6700", "red": "#b42318"}
 
 def as_date(v):
     return v if isinstance(v, dt.date) else dt.date.fromisoformat(str(v)[:10])
+
+
+def repos_of(p):
+    """{side: owner/name}. A pair is repos: {public, private}; the old single repo maps to the project's visibility."""
+    if p.get("repos"):
+        return dict(p["repos"])
+    return {p.get("visibility"): p["repo"]} if p.get("repo") else {}
+
+
+def lives_of(p):
+    """[(side, live)]: a pair keeps live per side, a single repo keeps it flat (old format)."""
+    live = p.get("live") or {}
+    return [(s, live.get(s) or {}) for s in p["repos"]] if p.get("repos") else [(p.get("visibility"), live)]
 
 
 def critical_path(projects):
@@ -53,6 +66,17 @@ def check(ledger, public=False, stale_days=7, now=None):
         pid = p.get("id", "?")
         if p.get("visibility") not in ("public", "private"):
             errors.append(f"{pid}: visibility must be public or private")
+        repos = p.get("repos")
+        if repos is not None:
+            if "repo" in p:
+                errors.append(f"{pid}: use repos or repo, not both")
+            if not isinstance(repos, dict) or not repos or set(repos) - {"public", "private"}                     or not all(isinstance(r, str) and r.count("/") == 1 for r in repos.values()):
+                errors.append(f"{pid}: repos must be {{public: owner/name, private: owner/name}} (one or both)")
+                continue
+            if p.get("visibility") != ("public" if "public" in repos else "private"):
+                errors.append(f"{pid}: a project with a public repo is public, otherwise private")
+            if public and any((p.get(k) or {}).get("private") for k in ("live", "evidence")):
+                errors.append(f"{pid}: a public ledger may name the private repo only; remove live/evidence.private")
         for d in p.get("depends_on", []):
             if d not in ids:
                 errors.append(f"{pid}: depends_on unknown project '{d}'")
@@ -83,15 +107,18 @@ def check(ledger, public=False, stale_days=7, now=None):
         age = (now - as_date(p["last_verified"])).days
         if age > stale_days:
             warnings.append(f"{pid}: STALE, last verified {age} days ago")
-        live, claimed = p.get("live") or {}, p.get("evidence") or {}
-        if live.get("error"):
-            warnings.append(f"{pid}: live check failed: {live['error']}")
-        if live.get("visibility") and live["visibility"] != p["visibility"]:
-            errors.append(f"{pid}: ledger says {p['visibility']} but GitHub says {live['visibility']}")
-        if live.get("head") and claimed.get("head") and not live["head"].startswith(str(claimed["head"])):
-            warnings.append(f"{pid}: STALE CLAIM, repo moved {claimed['head']} -> {live['head'][:7]} since the status was verified")
-        if p["rag"] == "green" and live.get("ci") == "failure":
-            warnings.append(f"{pid}: UNVERIFIED, RAG green but CI on HEAD failed")
+        for side, live in lives_of(p):
+            if public and side == "private":
+                continue  # a public check says nothing about a private repo beyond its name
+            tag, claimed = (f"{pid} [{side}]", (p.get("evidence") or {}).get(side) or {}) if p.get("repos") else (pid, p.get("evidence") or {})
+            if live.get("error"):
+                warnings.append(f"{tag}: live check failed: {live['error']}")
+            if live.get("visibility") and live["visibility"] != side:
+                errors.append(f"{tag}: ledger says {side} but GitHub says {live['visibility']}")
+            if live.get("head") and claimed.get("head") and not live["head"].startswith(str(claimed["head"])):
+                warnings.append(f"{tag}: STALE CLAIM, repo moved {claimed['head']} -> {live['head'][:7]} since the status was verified")
+            if p["rag"] == "green" and live.get("ci") == "failure":
+                warnings.append(f"{tag}: UNVERIFIED, RAG green but CI on HEAD failed")
     doing = sum(1 for p in projects if p.get("state") == "doing")
     if isinstance(ledger.get("wip_limit"), int) and doing > ledger["wip_limit"]:
         warnings.append(f"portfolio: WIP {doing} > limit {ledger['wip_limit']}; finish or pause before starting more")
@@ -118,27 +145,33 @@ def ci_summary(runs):
     return "failure" if any(r["conclusion"] not in ("success", "skipped", "neutral") for r in runs) else "success"
 
 
+def live_check(repo, now):
+    try:
+        meta = gh("repo", "view", repo, "--json", "visibility,defaultBranchRef")
+        commit = gh("api", f"repos/{repo}/commits/{meta['defaultBranchRef']['name']}")
+        runs = gh("run", "list", "-R", repo, "--commit", commit["sha"], "-L", "20", "--json", "status,conclusion,url,workflowName")
+        return {"visibility": meta["visibility"].lower(), "head": commit["sha"][:12],
+                "head_date": commit["commit"]["committer"]["date"],
+                "head_subject": commit["commit"]["message"].splitlines()[0][:100],
+                "ci": ci_summary(runs), "ci_url": runs[0]["url"] if runs else None, "checked": now}
+    except Exception as e:  # keep going: an unreachable repo is itself a status
+        return {"error": str(e)[:200], "checked": now}
+
+
 def refresh(ledger, now=None):
     now = (now or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds")
     for p in ledger.get("projects", []):
-        if not p.get("repo"):
-            continue
-        try:
-            meta = gh("repo", "view", p["repo"], "--json", "visibility,defaultBranchRef")
-            commit = gh("api", f"repos/{p['repo']}/commits/{meta['defaultBranchRef']['name']}")
-            runs = gh("run", "list", "-R", p["repo"], "--commit", commit["sha"], "-L", "20", "--json", "status,conclusion,url,workflowName")
-            p["live"] = {"visibility": meta["visibility"].lower(), "head": commit["sha"][:12],
-                         "head_date": commit["commit"]["committer"]["date"],
-                         "head_subject": commit["commit"]["message"].splitlines()[0][:100],
-                         "ci": ci_summary(runs), "ci_url": runs[0]["url"] if runs else None, "checked": now}
-        except Exception as e:  # keep going: an unreachable repo is itself a status
-            p["live"] = {"error": str(e)[:200], "checked": now}
+        if p.get("repos"):  # pair: both sides, except that a public ledger never records the private side
+            p["live"] = {s: live_check(r, now) for s, r in p["repos"].items() if not (ledger.get("public") and s == "private")}
+        elif p.get("repo"):
+            p["live"] = live_check(p["repo"], now)
     return ledger
 
 
 def status_md(p):
     ms, live, ev = p.get("milestone") or {}, p.get("live") or {}, p.get("evidence") or {}
-    lines = [f"# {p['name']} — STATUS", "", f"- Repo: {p.get('repo', '-')} ({p['visibility']})", f"- North star: {p['north_star']}",
+    repos = ", ".join(f"{s}: {r}" for s, r in repos_of(p).items()) if p.get("repos") else p.get("repo", "-")
+    lines = [f"# {p['name']} — STATUS", "", f"- Repo: {repos} ({p['visibility']})", f"- North star: {p['north_star']}",
              f"- State / RAG: {p['state']} / {p['rag']} — {p['rag_evidence']}",
              f"- Milestone: {ms.get('id', '')} {ms.get('name', '')}", f"- Exit test: {ms.get('exit_test', '')}",
              f"- Evidence (claimed): {ev or '-'}", f"- Live: {live or '-'}", f"- Owner: {p['owner']} · last verified {p['last_verified']}",
@@ -159,10 +192,12 @@ def render(ledger, out):
     head = ["Project", "State", "RAG", "Milestone", "Exit test", "Live HEAD / CI", "Next action", "Verified"]
     rows = []
     for p in projects:
-        live, ms = p.get("live") or {}, p.get("milestone") or {}
+        ms = p.get("milestone") or {}
+        lv = " · ".join((f"{s} " if p.get("repos") else "") + f"{str(l.get('head', ''))[:7]} {l.get('ci', '')}".strip()
+                        for s, l in lives_of(p) if l)
         nxt = (p.get("next_actions") or [""])[0]
         rows.append([p.get("name", p["id"]), p.get("state", ""), p.get("rag", ""), ms.get("id", "") or p.get("one_line", ""),
-                     ms.get("exit_test", ""), f"{str(live.get('head', ''))[:7]} {live.get('ci', '')}".strip(),
+                     ms.get("exit_test", ""), lv,
                      nxt.get("action", "") if isinstance(nxt, dict) else nxt, str(p.get("last_verified", ""))])
         if "milestone" in p:
             (out / "status" / f"{p['id']}.md").write_text(status_md(p), encoding="utf-8")
@@ -205,6 +240,9 @@ def main(argv=None):
         errors, warnings = render(ledger, a.out or path.parent)
     else:
         errors, warnings = check(ledger, public, a.stale_days)
+    for p in ledger.get("projects", []):
+        if p.get("repos"):  # names only, in both modes
+            print("PAIR ", p.get("id"), " · ".join(f"{s}: {r}" for s, r in p["repos"].items()))
     for f in errors:
         print("ERROR", f)
     for f in warnings:
