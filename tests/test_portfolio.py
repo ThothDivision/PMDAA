@@ -1,4 +1,4 @@
-import copy, datetime as dt, sys, tempfile, unittest
+import contextlib, copy, datetime as dt, io, json, sys, tempfile, unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "pmdaa" / "scripts"))
@@ -109,9 +109,38 @@ class Check(unittest.TestCase):
     def test_board(self):
         with tempfile.TemporaryDirectory() as d:
             pf.render(ledger(project("a"), project("b", depends_on=["a"])), d)
-            self.assertIn("critical path: a → b", (Path(d) / "BOARD.md").read_text())
-            self.assertIn("<table>", (Path(d) / "board.html").read_text())
+            # read as UTF-8 explicitly: on Windows the default codepage (cp1252) turns
+            # the board's U+2192 arrow into mojibake and the assertion fails spuriously.
+            self.assertIn("critical path: a → b", (Path(d) / "BOARD.md").read_text(encoding="utf-8"))
+            self.assertIn("<table>", (Path(d) / "board.html").read_text(encoding="utf-8"))
             self.assertTrue((Path(d) / "status" / "b.md").is_file())
+
+
+    def test_agent_roster(self):
+        roster = [{"id": "challe", "role": "orchestrator", "mode": "general"}]
+        self.assertEqual(self.errs(ledger(project("a", agent="challe"), agents=roster))[1], [])
+        unknown = ledger(project("a", agent="ghost"), agents=roster)
+        self.assertTrue(any("not in the portfolio's agents roster" in w for w in self.errs(unknown)[1]),
+                        self.errs(unknown)[1])
+
+    def test_json_output(self):
+        lg = ledger(project("a", agent="challe"), agents=[{"id": "challe"}])
+        errors, warnings = pf.check(lg, now=TODAY)
+        doc = json.loads(pf.as_json(lg, errors, warnings))
+        self.assertEqual(doc["portfolio"], "t")
+        self.assertEqual(doc["projects"][0]["agent"], "challe")
+        self.assertEqual(doc["projects"][0]["state"], "doing")
+
+    def test_terminal_board(self):
+        lg = ledger(project("a", agent="challe"), agents=[{"id": "challe"}])
+        errors, warnings = pf.check(lg, now=TODAY)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            pf.terminal_board(lg, errors, warnings)
+        out = buf.getvalue()
+        self.assertIn("T PORTFOLIO", out)
+        self.assertIn("challe", out)
+        self.assertIn("AGENT", out)
 
 
 class Example(unittest.TestCase):
@@ -119,7 +148,7 @@ class Example(unittest.TestCase):
         import yaml
         root = Path(__file__).resolve().parents[1]
         for f in (root / "examples").glob("*/PORTFOLIO.yaml"):
-            errors, _ = pf.check(yaml.safe_load(f.read_text()), public=True, stale_days=10**6)
+            errors, _ = pf.check(yaml.safe_load(f.read_text(encoding="utf-8")), public=True, stale_days=10**6)
             self.assertEqual(errors, [], f)
 
 

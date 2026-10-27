@@ -7,15 +7,44 @@
 
 Needs PyYAML. 'refresh' needs the GitHub CLI ('gh', or the path in $GH). Exit code 1 on ledger errors.
 """
-import argparse, datetime as dt, html, json, os, subprocess, sys
+import argparse, datetime as dt, html, json, os, shutil, subprocess, sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import yaml
+
+# Windows consoles default to a legacy codepage; glyphs like the middot then raise
+# UnicodeEncodeError or print mojibake. Force UTF-8 out, degrading rather than dying.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 RAG = {"green", "amber", "red"}
 STATES = {"backlog", "doing", "blocked", "done"}  # kanban columns
 REQUIRED = ["id", "name", "visibility", "north_star", "state", "rag", "rag_evidence", "milestone", "next_actions", "owner", "last_verified"]
 PUBLIC_PRIVATE_KEYS = {"id", "name", "visibility", "one_line", "rag", "state", "depends_on"}  # all a public ledger may say about a private project
 CHIP = {"green": "#1f7a45", "amber": "#9a6700", "red": "#b42318"}
+ANSI = {"green": "\033[32m", "amber": "\033[33m", "red": "\033[31m", "bold": "\033[1m", "dim": "\033[2m"}
+RESET = "\033[0m"
+
+
+def color(text, name):
+    """Colour only when a human is watching a tty; NO_COLOR or a pipe gets plain text."""
+    if os.environ.get("NO_COLOR") or not sys.stdout.isatty():
+        return str(text)
+    return f"{ANSI.get(name, '')}{text}{RESET}"
+
+
+def agent_ids(ledger):
+    """Ids from the optional top-level `agents:` roster, plus any ad-hoc project agent."""
+    roster = ledger.get("agents") or []
+    return {a.get("id") for a in roster if isinstance(a, dict) and a.get("id")}
+
+
+def agent_of(p):
+    a = p.get("agent")
+    return a.get("id") if isinstance(a, dict) else (a if isinstance(a, str) else "-")
 
 
 def as_date(v):
@@ -60,6 +89,7 @@ def check(ledger, public=False, stale_days=7, now=None):
         if key not in ledger:
             errors.append(f"portfolio: missing '{key}'")
     ids = [p.get("id") for p in projects]
+    roster = agent_ids(ledger)
     if len(ids) != len(set(ids)):
         errors.append("portfolio: duplicate project ids")
     for p in projects:
@@ -107,6 +137,8 @@ def check(ledger, public=False, stale_days=7, now=None):
         age = (now - as_date(p["last_verified"])).days
         if age > stale_days:
             warnings.append(f"{pid}: STALE, last verified {age} days ago")
+        if roster and agent_of(p) not in roster | {"-"}:
+            warnings.append(f"{pid}: agent '{agent_of(p)}' is not in the portfolio's agents roster")
         for side, live in lives_of(p):
             if public and side == "private":
                 continue  # a public check says nothing about a private repo beyond its name
@@ -131,10 +163,12 @@ def check(ledger, public=False, stale_days=7, now=None):
 
 
 def gh(*args):
-    out = subprocess.run([os.environ.get("GH", "gh"), *args], capture_output=True, text=True, timeout=60)
+    # Decode as UTF-8 explicitly: on Windows `text=True` uses the legacy ANSI codepage
+    # (cp1252) and dies on any non-ASCII byte in a commit subject or repo name.
+    out = subprocess.run([os.environ.get("GH", "gh"), *args], capture_output=True, timeout=60)
     if out.returncode:
-        raise RuntimeError(out.stderr.strip() or f"gh {args[0]} failed")
-    return json.loads(out.stdout)
+        raise RuntimeError(out.stderr.decode("utf-8", "replace").strip() or f"gh {args[0]} failed")
+    return json.loads(out.stdout.decode("utf-8", "replace"))
 
 
 def ci_summary(runs):
@@ -158,13 +192,27 @@ def live_check(repo, now):
         return {"error": str(e)[:200], "checked": now}
 
 
-def refresh(ledger, now=None):
+def refresh(ledger, now=None, workers=8):
+    """Live-check every repo. One check is 3 serial `gh` calls, so run them concurrently."""
     now = (now or dt.datetime.now(dt.timezone.utc)).isoformat(timespec="seconds")
+    jobs = []  # (project, side or None, repo)
     for p in ledger.get("projects", []):
-        if p.get("repos"):  # pair: both sides, except that a public ledger never records the private side
-            p["live"] = {s: live_check(r, now) for s, r in p["repos"].items() if not (ledger.get("public") and s == "private")}
+        if p.get("repos"):
+            p["live"] = {}
+            for side, repo in p["repos"].items():
+                if ledger.get("public") and side == "private":
+                    continue  # a public ledger names the private repo, it never reads it
+                jobs.append((p, side, repo))
         elif p.get("repo"):
-            p["live"] = live_check(p["repo"], now)
+            jobs.append((p, None, p["repo"]))
+    if jobs:
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(jobs)))) as pool:
+            results = list(pool.map(lambda job: live_check(job[2], now), jobs))
+        for (p, side, _), live in zip(jobs, results):
+            if side:
+                p["live"][side] = live
+            else:
+                p["live"] = live
     return ledger
 
 
@@ -222,6 +270,56 @@ b{{color:#fff;padding:.1rem .5rem;border-radius:1rem}}.wrap{{overflow-x:auto}}</
     return errors, warnings
 
 
+def terminal_board(ledger, errors, warnings):
+    """Print the board to the terminal: the local "where is every project" view."""
+    projects = ledger.get("projects", [])
+    width = max(60, shutil.get_terminal_size((110, 24)).columns)
+    print(color(f"{str(ledger.get('portfolio', 'portfolio')).upper()} PORTFOLIO", "bold"))
+    print(color("  " + str(ledger.get("north_star", ""))[:width - 2], "dim"))
+    doing = sum(1 for p in projects if p.get("state") == "doing")
+    try:
+        cp = " -> ".join(critical_path(projects)) if not errors else "n/a (fix errors)"
+    except ValueError:
+        cp = "n/a (dependency cycle)"
+    print(color(f"  WIP {doing}/{ledger.get('wip_limit')}  critical path: {cp}  updated {ledger.get('updated', '-')}", "dim"))
+    print()
+    cols = [("PROJECT", 24), ("AGENT", 10), ("STATE", 8), ("RAG", 6), ("HEAD", 9), ("CI", 9), ("VERIFIED", 12), ("MS", 5)]
+    print(color("  " + "  ".join(h.ljust(w) for h, w in cols), "bold"))
+    print("  " + "  ".join("-" * w for _, w in cols))
+    for p in projects:
+        live = next((l for _, l in lives_of(p) if l), {}) or {}
+        ms = p.get("milestone") or {}
+        rag = str(p.get("rag", "-"))
+        raw = [str(p.get("name", p.get("id", "?")))[:cols[0][1]], str(agent_of(p))[:cols[1][1]],
+               str(p.get("state", "-"))[:cols[2][1]], rag[:cols[3][1]], str(live.get("head", "-"))[:7],
+               str(live.get("ci", "-"))[:cols[5][1]], str(p.get("last_verified", "-"))[:cols[6][1]],
+               str(ms.get("id", "-"))[:cols[7][1]]]
+        cells = [c.ljust(w) for c, (_, w) in zip(raw, cols)]
+        cells[3] = color(cells[3], rag)  # pad first, then colour: escapes must not count as width
+        print("  " + "  ".join(cells)[:width])
+    print()
+    for f in errors:
+        print(color(f"  ERROR {f}", "red"))
+    for f in warnings or ["none"]:
+        print(color(f"  WARN  {f}", "amber"))
+    print(color(f"  {len(projects)} projects, {len(errors)} errors, {len(warnings)} warnings", "dim"))
+
+
+def as_json(ledger, errors, warnings):
+    """Machine-readable status, for a TUI or dashboard to consume."""
+    out = {"portfolio": ledger.get("portfolio"), "updated": str(ledger.get("updated")),
+           "north_star": ledger.get("north_star"), "wip_limit": ledger.get("wip_limit"),
+           "errors": errors, "warnings": warnings, "projects": []}
+    for p in ledger.get("projects", []):
+        out["projects"].append({"id": p.get("id"), "name": p.get("name"), "state": p.get("state"),
+                                "rag": p.get("rag"), "rag_evidence": p.get("rag_evidence"), "agent": agent_of(p),
+                                "owner": p.get("owner"), "visibility": p.get("visibility"),
+                                "repos": repos_of(p), "live": p.get("live") or {},
+                                "milestone": p.get("milestone") or {}, "next_actions": p.get("next_actions") or [],
+                                "blockers": p.get("blockers") or [], "last_verified": str(p.get("last_verified"))})
+    return json.dumps(out, indent=2, default=str)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["check", "refresh", "board"])
@@ -229,6 +327,8 @@ def main(argv=None):
     ap.add_argument("--public", action="store_true", help="enforce public-safe content for private projects")
     ap.add_argument("--stale-days", type=int, default=7)
     ap.add_argument("--out", help="board output dir (default: the ledger's dir)")
+    ap.add_argument("--terminal", action="store_true", help="with board: print to the terminal instead of writing files")
+    ap.add_argument("--json", action="store_true", help="emit machine-readable status instead of the human report")
     a = ap.parse_args(argv)
     path = Path(a.ledger)
     ledger = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -236,10 +336,16 @@ def main(argv=None):
     if a.command == "refresh":
         # shortcut: rewriting drops YAML comments; keep notes in fields, not comments.
         path.write_text(yaml.safe_dump(refresh(ledger), sort_keys=False, allow_unicode=True, width=120), encoding="utf-8")
-    if a.command == "board":
+    if a.command == "board" and not a.terminal:
         errors, warnings = render(ledger, a.out or path.parent)
     else:
         errors, warnings = check(ledger, public, a.stale_days)
+    if a.json:
+        print(as_json(ledger, errors, warnings))
+        return 1 if errors else 0
+    if a.command == "board" and a.terminal:
+        terminal_board(ledger, errors, warnings)
+        return 1 if errors else 0
     for p in ledger.get("projects", []):
         if p.get("repos"):  # names only, in both modes
             print("PAIR ", p.get("id"), " · ".join(f"{s}: {r}" for s, r in p["repos"].items()))

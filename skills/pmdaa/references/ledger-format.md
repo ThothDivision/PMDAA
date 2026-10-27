@@ -8,6 +8,8 @@ north_star: "One sentence: the outcome all projects serve"   # (checked) OKR obj
 wip_limit: 3                       # (checked) max projects in state 'doing'; over the limit is a warning
 public: false                      # true = public-safe ledger; same as --public
 updated: 2026-10-13
+agents:                            # optional roster; a project's `agent` must name one of these ids
+  - {id: challe, role: orchestrator, mode: general, note: "what this agent is for"}
 projects:
   - id: dex                        # (checked) unique; used by depends_on
     name: Autheo DEX
@@ -34,6 +36,7 @@ projects:
     next_actions:                  # (checked) 1..3 when open
       - {action: "The concrete next thing", owner: agent, status: todo}   # status: todo | doing | done
     owner: SolutionsAsService      # single-threaded owner
+    agent: challe                  # optional; which agent/role is on it now (warned if absent from the roster)
     last_verified: 2026-10-13      # (checked) STALE after --stale-days
     depends_on: [other-id]         # (checked) ids exist, no cycles; drives the critical path
     raid:                          # risks, assumptions, issues, dependencies
@@ -55,9 +58,17 @@ projects:
   `evidence` is per side too (`evidence: {public: {head: ...}}`). Each side must match its GitHub visibility. The project is
   `public` when it has a public repo. In a public ledger the private repo is a **name only**: `refresh` skips it, `check
   --public` prints just its name, and `live.private` / `evidence.private` are errors. The old single `repo` keeps working.
+- **Agents.** `agents:` is an optional roster of `{id, role, mode, note}`; a project's `agent:` must name one of
+  its ids, or `-` for unassigned. `owner` is the human who answers for the project and stays single-threaded;
+  `agent` is who is on it now and may change between sessions. An unknown id is a warning, not an error, so
+  adding an agent to a project before adding it to the roster does not break the ledger.
 - **Comments.** `refresh` rewrites the file, which drops YAML comments; keep notes in fields.
 
 ## Board
 
-`portfolio.py board PORTFOLIO.yaml [--out DIR]` writes `BOARD.md`, `board.html` (static, no scripts) and `status/<id>.md` per
-project, with the checker's flags at the bottom of the board.
+`portfolio.py board PORTFOLIO.yaml [--out DIR]` writes `BOARD.md`, `board.html` (static, no scripts) and
+`status/<id>.md` per project, with the checker's flags at the bottom of the board.
+
+`board --terminal` prints the board to the terminal instead of writing files — the local "where is every
+project" view, with an Agent column and RAG in colour (plain text when piped or under `NO_COLOR`).
+`check --json` or `board --json` emit the same status as JSON, for a TUI or dashboard to consume.

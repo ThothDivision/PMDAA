@@ -25,17 +25,29 @@ can keep pulling from P-DADA; `pmdaa` carries verbatim copies of its graphs (CI 
 ```text
 $pmdaa resume the autheo portfolio: live-check every project, flag stale status, pick the next action
 $pmdaa plan M2 for project X (Plan mode = P-DADA)
+$pmdaa --mode=researcher how do Cosmos chains normally close an IBC mint path?
 ```
+
+Sessions can run as **modes** — `general` (strategy), `researcher` (sourced best practice), `teaching`
+(explanation), plus the `vision` / `execution` planning presets: [modes.md](skills/pmdaa/references/modes.md).
+A portfolio can also carry an `agents:` roster, and each project an `agent:`, so "where is each project across
+the agents working on it" is answerable from the board.
 
 The ledger tool (Python 3 + PyYAML; `refresh` needs the GitHub CLI):
 
 ```sh
 P=skills/pmdaa/scripts/portfolio.py
-python3 $P refresh PORTFOLIO.yaml   # live: visibility, HEAD, CI on HEAD per project (gh, or $GH)
+python3 $P refresh PORTFOLIO.yaml   # live: visibility, HEAD, CI on HEAD per project (gh, or $GH); concurrent
 python3 $P check   PORTFOLIO.yaml   # errors (broken ledger) + warnings (STALE, STALE CLAIM, UNVERIFIED, WIP)
 python3 $P check   PORTFOLIO.yaml --public   # a private project may carry name + one line only
 python3 $P board   PORTFOLIO.yaml   # BOARD.md, board.html, status/<id>.md
+python3 $P board   PORTFOLIO.yaml --terminal  # print the board to the terminal instead (Agent column, colour)
+python3 $P check   PORTFOLIO.yaml --json      # the same status, machine-readable
 ```
+
+On Windows, PyYAML must be importable by whichever interpreter `python3` resolves to. `refresh` decodes `gh`
+output as UTF-8 explicitly: the legacy ANSI codepage otherwise raises `UnicodeDecodeError` on any non-ASCII
+commit subject.
 
 Worked example (public-safe): [examples/autheo](examples/autheo/BOARD.md). Format: [ledger-format.md](skills/pmdaa/references/ledger-format.md).
 Contract: [skills/pmdaa/SKILL.md](skills/pmdaa/SKILL.md). Graphs: [management](skills/pmdaa/references/management-graph.md),

@@ -21,6 +21,22 @@ the outcome in the ledger. Never report a project's status from memory or from t
 
 The checker and board renderer is `scripts/portfolio.py` in this skill folder (Python 3 + PyYAML; `refresh` needs `gh` or `$GH`).
 
+```sh
+python3 scripts/portfolio.py check   PORTFOLIO.yaml [--public] [--stale-days 7] [--json]
+python3 scripts/portfolio.py refresh PORTFOLIO.yaml               # live: visibility, HEAD, CI on HEAD (concurrent)
+python3 scripts/portfolio.py board   PORTFOLIO.yaml [--out DIR]   # BOARD.md, board.html, status/<id>.md
+python3 scripts/portfolio.py board   PORTFOLIO.yaml --terminal    # print the board to the terminal instead
+```
+
+`--terminal` is the local "where is every project" view, with an **Agent** column and RAG in colour (plain text
+when piped or under `NO_COLOR`). `--json` emits the same status machine-readable, for a TUI or dashboard to
+consume. `refresh` runs its `gh` calls concurrently — three serial calls per repo is slow once a portfolio
+passes a handful of projects.
+
+On Windows: PyYAML must be importable by whichever interpreter `python3` resolves to, and `gh` output is decoded
+as UTF-8 explicitly — the legacy ANSI codepage otherwise raises `UnicodeDecodeError` on any non-ASCII commit
+subject.
+
 ## Resume protocol (every session that touches a portfolio)
 
 1. **Read the ledger.** Find `PORTFOLIO.yaml` (path given by the user, a memory note, or `portfolio/<name>/` in the workspace).
@@ -41,6 +57,29 @@ The checker and board renderer is `scripts/portfolio.py` in this skill folder (P
    next actions (max 3, done ones removed), blockers, RAID, decisions. Run `check` (0 errors) and `board`. Append to
    `SESSION-LOG.md`: date, what was verified (SHAs, CI links), flags found, action taken, what changed in the ledger, and the
    first action for the next session. Commit the ledger if it lives in a repo.
+
+## Agents
+
+A portfolio may carry an `agents:` roster, and each project may name the `agent:` working on it. `owner` stays
+the single-threaded human who answers for the project; `agent` says which agent or role is on it *now*. `check`
+warns when a project names an agent that is not on the roster, so a typo is caught instead of silently tracking
+nothing. This is what makes "where is each project across the agents working on it" answerable from the board
+rather than from recall.
+
+```yaml
+agents:
+  - {id: challe, role: orchestrator, mode: general, note: "planning + portfolio orchestration"}
+  - {id: secbot, role: researcher,   mode: researcher, note: "static scanner + invariant monitor"}
+  - {id: valops, role: operator,     mode: execution,  note: "validator and node operations"}
+```
+
+The roster is a claim like any other: an agent listed but never seen doing work is a stale claim.
+
+## Modes
+
+Planning and session presets, for when a session should behave as a strategist, a researcher or a teacher rather
+than as the default manager: [references/modes.md](references/modes.md). Modes are v0 — `general`, `researcher`
+and `teaching` for sessions, alongside the `vision` and `execution` presets Plan mode already had.
 
 ## Ledger (`PORTFOLIO.yaml`)
 
